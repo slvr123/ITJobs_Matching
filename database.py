@@ -115,7 +115,36 @@ def init_db():
                 password   TEXT    NOT NULL,
                 role       TEXT    NOT NULL DEFAULT 'user',
                 email_enc  BLOB,
+                two_fa_secret TEXT,
                 created_at TEXT    DEFAULT (datetime('now'))
+            )
+        """)
+        
+        # Add two_fa_secret to existing tables
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN two_fa_secret TEXT")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            conn.execute("ALTER TABLE users ADD COLUMN verification_token TEXT")
+        except sqlite3.OperationalError:
+            pass
+            
+        conn.commit()
+
+    # Create pending verifications table for temporary email codes
+    with _get_conn() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pending_verifications (
+                email TEXT PRIMARY KEY,
+                code TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
             )
         """)
         conn.commit()
@@ -125,32 +154,51 @@ def init_db():
         import bcrypt
         default_hash = bcrypt.hashpw(b"admin123", bcrypt.gensalt()).decode()
         create_user("admin", default_hash, role="admin")
+        # Verify admin by default
+        with _get_conn() as conn:
+            conn.execute("UPDATE users SET is_verified = 1 WHERE username = 'admin'")
+            conn.commit()
         print("[database] Default admin seeded — user: admin  password: admin123")
         print("[database] !! Change the admin password after first login !!")
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
-def get_user(username: str) -> dict | None:
+def get_user(identifier: str) -> dict | None:
     """
-    Look up a user by username.
-    Returns dict(username, password, role, email, created_at) or None.
+    Look up a user by username or email.
     """
+    identifier = identifier.strip().lower()
+    
     with _get_conn() as conn:
+        # First try exact username match
         row = conn.execute(
             "SELECT * FROM users WHERE username = ?",
-            (username.strip().lower(),)
+            (identifier,)
         ).fetchone()
 
+        if row is None and "@" in identifier:
+            # If not found and it looks like an email, we must scan the DB 
+            # because Fernet encryption is non-deterministic
+            all_rows = conn.execute("SELECT * FROM users").fetchall()
+            for r in all_rows:
+                email = _decrypt(r["email_enc"])
+                if email and email.strip().lower() == identifier:
+                    row = r
+                    break
+        
     if row is None:
         return None
 
     return {
-        "username":   row["username"],
-        "password":   row["password"],
-        "role":       row["role"],
-        "email":      _decrypt(row["email_enc"]),
-        "created_at": row["created_at"],
+        "username":      row["username"],
+        "password":      row["password"],
+        "role":          row["role"],
+        "email":         _decrypt(row["email_enc"]),
+        "two_fa_secret": _decrypt(row["two_fa_secret"]),
+        "is_verified":   row["is_verified"] if "is_verified" in row.keys() else 1,
+        "verification_token": row["verification_token"] if "verification_token" in row.keys() else None,
+        "created_at":    row["created_at"],
     }
 
 
@@ -159,6 +207,7 @@ def create_user(
     hashed_password: str,
     role: str = "user",
     email: str = None,
+    verification_token: str = None,
 ) -> tuple[bool, str]:
     """
     Insert a new user. hashed_password must already be a bcrypt hash.
@@ -170,8 +219,8 @@ def create_user(
     try:
         with _get_conn() as conn:
             conn.execute(
-                "INSERT INTO users (username, password, role, email_enc) VALUES (?, ?, ?, ?)",
-                (username, hashed_password, role, email_enc),
+                "INSERT INTO users (username, password, role, email_enc, verification_token, is_verified) VALUES (?, ?, ?, ?, ?, 0)",
+                (username, hashed_password, role, email_enc, verification_token),
             )
             conn.commit()
         return True, ""
@@ -202,6 +251,27 @@ def set_role(username: str, role: str) -> bool:
         conn.commit()
     return cur.rowcount > 0
 
+def update_email(username: str, email: str) -> bool:
+    """Update a user's email."""
+    email_enc = _encrypt(email) if email else None
+    with _get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE users SET email_enc = ? WHERE username = ?",
+            (email_enc, username.strip().lower()),
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+def set_2fa_secret(username: str, secret: str | None) -> bool:
+    """Set or clear a user's 2FA secret."""
+    secret_enc = _encrypt(secret) if secret else None
+    with _get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE users SET two_fa_secret = ? WHERE username = ?",
+            (secret_enc, username.strip().lower()),
+        )
+        conn.commit()
+    return cur.rowcount > 0
 
 def list_users() -> list[dict]:
     """Return all users as [{username, role, created_at}] — no passwords returned."""
@@ -221,6 +291,48 @@ def delete_user(username: str) -> bool:
         )
         conn.commit()
     return cur.rowcount > 0
+
+def verify_user_by_token(token: str) -> bool:
+    """Verify a user via their token. Returns True if successfully updated."""
+    with _get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE users SET is_verified = 1, verification_token = NULL WHERE verification_token = ?",
+            (token,)
+        )
+        conn.commit()
+    return cur.rowcount > 0
+
+def save_verification_code(email: str, code: str) -> bool:
+    """Save a verification code for an email. Returns True if successful."""
+    email = email.strip().lower()
+    try:
+        with _get_conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO pending_verifications (email, code, created_at) VALUES (?, ?, datetime('now'))",
+                (email, code),
+            )
+            conn.commit()
+        return True
+    except Exception as e:
+        print(f"[database] Error saving verification code: {e}")
+        return False
+
+def verify_email_code(email: str, code: str) -> bool:
+    """Check if email + code match and delete the record. Returns True if valid."""
+    email = email.strip().lower()
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM pending_verifications WHERE email = ? AND code = ?",
+            (email, code)
+        ).fetchone()
+        
+        if row:
+            # Delete the verified code
+            conn.execute("DELETE FROM pending_verifications WHERE email = ?", (email,))
+            conn.commit()
+            return True
+    return False
+
 
 
 # ── One-time migration from users.json ───────────────────────────────────────

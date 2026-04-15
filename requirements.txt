@@ -11,3 +11,6 @@ python-dotenv
 cryptography
 groq
 gunicorn
+pyotp
+qrcode
+pypng

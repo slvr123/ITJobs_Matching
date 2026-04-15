@@ -52,6 +52,9 @@ def init_session():
         ("role", None),
         ("jwt_token", None),
         ("username", None),
+        ("email", ""),
+        ("has_2fa", False),
+        ("pending_signup", None),
         ("login_error", ""),
     ]:
         if key not in st.session_state:
@@ -78,6 +81,8 @@ def verify_token() -> bool:
         # Refresh role and username from the token in case they changed
         st.session_state.role = data.get("role", "user")
         st.session_state.username = data.get("username")
+        st.session_state.email = data.get("email", "")
+        st.session_state.has_2fa = data.get("has_2fa", False)
         return True
 
     # Token expired or invalid — clear session
@@ -130,7 +135,7 @@ def login_screen():
             with tab_login:
                 st.markdown("#### Account login")
                 with st.form("login_form", clear_on_submit=False):
-                    username = st.text_input("Username", placeholder="admin")
+                    username = st.text_input("Username or Email", placeholder="admin")
                     password = st.text_input("Password", type="password", placeholder="••••••••")
                     
                     submitted = st.form_submit_button("Log in", use_container_width=True)
@@ -140,7 +145,7 @@ def login_screen():
 
                 if submitted:
                     if not username.strip() or not password.strip():
-                        st.error("Please enter both username and password.")
+                        st.error("Please enter both username/email and password.")
                     else:
                         with st.spinner("Logging in..."):
                             data, code = _api_call(
@@ -159,57 +164,146 @@ def login_screen():
                                 else:
                                     st.success("Logged in successfully. Redirecting...")
                                 import time; time.sleep(0.5)
+                                verify_token()
                                 st.rerun()
                             else:
-                                st.session_state.login_error = data.get("error", "Login failed. Please check your username and password.")
+                                st.session_state.login_error = data.get("error", "Login failed. Please check your credentials.")
                                 import time; time.sleep(0.5)
                                 st.rerun()
 
             # ── REGISTER TAB ──────────────────────────────────────────────────
             with tab_register:
                 st.markdown("#### Register")
-                with st.form("register_form", clear_on_submit=True):
-                    new_username = st.text_input("New username")
-                    new_password = st.text_input("New password", type="password")
-                    confirm_password = st.text_input("Confirm password", type="password")
+                pending_signup = st.session_state.get("pending_signup")
 
-                    reg_submitted = st.form_submit_button("Create account", use_container_width=True, type="primary")
+                if pending_signup:
+                    email_value = pending_signup.get("email", "")
+                    email_parts = email_value.split("@")
+                    masked_email = email_value
+                    if len(email_parts) == 2 and len(email_parts[0]) > 2:
+                        local = email_parts[0]
+                        masked_email = f"{local[:2]}{'*' * max(2, len(local) - 2)}@{email_parts[1]}"
 
-                if reg_submitted:
-                    new_username_clean = new_username.strip()
-                    
-                    if not new_username_clean or not new_password:
-                        st.error("Please fill out all fields.")
-                    elif len(new_username_clean) < 3:
-                        st.warning("Username must be at least 3 characters long.")
-                    elif not new_username_clean.isalnum():
-                        st.warning("Username can only contain letters and numbers.")
-                    elif len(new_password) < 8:
-                        st.warning("Password must be at least 8 characters long.")
-                    elif not re.search(r"\d", new_password):
-                        st.warning("Password must contain at least one number.")
-                    elif not re.search(r"[a-zA-Z]", new_password):
-                        st.warning("Password must contain at least one letter.")
-                    elif new_password != confirm_password:
-                        st.error("Passwords do not match.")
-                    else:
-                        with st.spinner("Creating account..."):
-                            data, code = _api_call(
-                                "POST", "/auth/register",
-                                json={"username": new_username_clean, "password": new_password}
+                    st.markdown("##### Verify your email address")
+                    st.caption(f"A verification code has been sent to {masked_email}")
+                    st.caption("Enter the 6-digit code below to continue.")
+
+                    digit_cols = st.columns(6)
+                    digits = []
+                    for i, col in enumerate(digit_cols):
+                        with col:
+                            val = st.text_input(
+                                f"Digit {i+1}",
+                                max_chars=1,
+                                key=f"verify_digit_{i}",
+                                label_visibility="collapsed",
+                                placeholder="0",
                             )
+                            digits.append(val.strip())
 
-                            if code == 201:
-                                # Auto-login after registration
-                                st.session_state.jwt_token = data["token"]
-                                st.session_state.role = data["role"]
-                                st.session_state.username = data["username"]
-                                st.session_state.login_error = ""
-                                st.success(data.get("message", "Account created!"))
-                                import time; time.sleep(0.5)
-                                st.rerun()
+                    code_input = "".join(digits)
+
+                    verify_btn = st.button("Verify", use_container_width=True, type="primary")
+                    action_col1, action_col2 = st.columns(2)
+                    with action_col1:
+                        resend_btn = st.button("Resend code", use_container_width=True)
+                    with action_col2:
+                        change_email_btn = st.button("Change email", use_container_width=True)
+
+                    if verify_btn:
+                        if len(code_input) != 6 or not code_input.isdigit():
+                            st.error("Please enter the full 6-digit verification code.")
+                        else:
+                            with st.spinner("Verifying code..."):
+                                data, verify_code = _api_call(
+                                    "POST", "/auth/verify-code",
+                                    json={"email": pending_signup["email"], "code": code_input}
+                                )
+                                if verify_code == 200:
+                                    reg_data, reg_code = _api_call(
+                                        "POST", "/auth/register",
+                                        json={
+                                            "email": pending_signup["email"],
+                                            "username": pending_signup["username"],
+                                            "password": pending_signup["password"],
+                                        }
+                                    )
+                                    if reg_code == 201:
+                                        st.session_state.jwt_token = reg_data.get("token")
+                                        st.session_state.role = reg_data.get("role")
+                                        st.session_state.username = reg_data.get("username")
+                                        st.session_state.pending_signup = None
+                                        for i in range(6):
+                                            st.session_state.pop(f"verify_digit_{i}", None)
+                                        st.success("Account created successfully! Logging in...")
+                                        import time; time.sleep(0.5)
+                                        verify_token()
+                                        st.rerun()
+                                    else:
+                                        st.error(reg_data.get("error", "Registration failed after code verification."))
+                                else:
+                                    st.error(data.get("error", "Invalid or expired verification code."))
+
+                    if resend_btn:
+                        with st.spinner("Resending verification code..."):
+                            data, resend_code = _api_call(
+                                "POST", "/auth/send-verification-code",
+                                json={"email": pending_signup["email"]}
+                            )
+                            if resend_code == 200:
+                                st.success("A new verification code has been sent.")
                             else:
-                                st.error(data.get("error", "Registration failed."))
+                                st.error(data.get("error", "Failed to resend code."))
+
+                    if change_email_btn:
+                        st.session_state.pending_signup = None
+                        for i in range(6):
+                            st.session_state.pop(f"verify_digit_{i}", None)
+                        st.rerun()
+
+                else:
+                    with st.form("register_form", clear_on_submit=True):
+                        new_email = st.text_input("Email Address", placeholder="user@example.com")
+                        new_username = st.text_input("Username", placeholder="MyUsername")
+                        new_password = st.text_input("Password", type="password", placeholder="••••••••")
+                        confirm_password = st.text_input("Confirm password", type="password", placeholder="••••••••")
+                        reg_submitted = st.form_submit_button("Continue", use_container_width=True, type="primary")
+
+                    if reg_submitted:
+                        new_email_clean = new_email.strip().lower()
+                        new_username_clean = new_username.strip()
+
+                        if not new_email_clean or not new_username_clean or not new_password:
+                            st.error("Please fill out all fields.")
+                        elif not re.match(r"[^@]+@[^@]+\.[^@]+", new_email_clean):
+                            st.warning("Please enter a valid email address.")
+                        elif len(new_username_clean) < 3:
+                            st.warning("Username must be at least 3 characters long.")
+                        elif not new_username_clean.isalnum():
+                            st.warning("Username can only contain letters and numbers.")
+                        elif len(new_password) < 8:
+                            st.warning("Password must be at least 8 characters long.")
+                        elif not re.search(r"\d", new_password):
+                            st.warning("Password must contain at least one number.")
+                        elif not re.search(r"[a-zA-Z]", new_password):
+                            st.warning("Password must contain at least one letter.")
+                        elif new_password != confirm_password:
+                            st.error("Passwords do not match.")
+                        else:
+                            with st.spinner("Sending verification code..."):
+                                data, code = _api_call(
+                                    "POST", "/auth/send-verification-code",
+                                    json={"email": new_email_clean}
+                                )
+                                if code == 200:
+                                    st.session_state.pending_signup = {
+                                        "email": new_email_clean,
+                                        "username": new_username_clean,
+                                        "password": new_password,
+                                    }
+                                    st.rerun()
+                                else:
+                                    st.error(data.get("error", "Failed to send verification code."))
 
     return False
 
