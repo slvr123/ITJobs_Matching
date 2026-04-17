@@ -341,37 +341,159 @@ def login_screen():
                     st.markdown(f"**Check your inbox**")
                     st.caption(f"We sent a 6-digit code to **{masked_email}**.")
 
-                    # Single hidden text input (accepts paste)
-                    raw_code = st.text_input(
-                        "Verification code",
-                        max_chars=6,
-                        placeholder="Enter or paste 6-digit code",
+                    # ── Custom OTP component with JS auto-advance + paste ─────
+                    import streamlit.components.v1 as components
+
+                    otp_html = """
+                    <style>
+                      .otp-row {
+                        display: flex; gap: 10px; justify-content: center; margin: 12px 0;
+                      }
+                      .otp-cell {
+                        width: 48px; height: 56px;
+                        border: 2px solid #98c1d9;
+                        border-radius: 10px;
+                        font-size: 1.6rem; font-weight: 700;
+                        text-align: center;
+                        color: #3d5a80;
+                        background: #e0fbfc;
+                        outline: none;
+                        caret-color: transparent;
+                        transition: border-color 0.15s, background 0.15s;
+                      }
+                      .otp-cell:focus {
+                        border-color: #ee6c4d;
+                        background: #fff8f6;
+                        box-shadow: 0 0 0 3px rgba(238,108,77,0.15);
+                      }
+                      .otp-cell.filled {
+                        background: #3d5a80;
+                        color: #ffffff;
+                        border-color: #3d5a80;
+                      }
+                    </style>
+
+                    <div class="otp-row" id="otp-row">
+                      <input class="otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]" id="d0" />
+                      <input class="otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]" id="d1" />
+                      <input class="otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]" id="d2" />
+                      <input class="otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]" id="d3" />
+                      <input class="otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]" id="d4" />
+                      <input class="otp-cell" maxlength="1" inputmode="numeric" pattern="[0-9]" id="d5" />
+                    </div>
+
+                    <script>
+                      const cells = Array.from(document.querySelectorAll('.otp-cell'));
+
+                      function updateFilled() {
+                        cells.forEach(c => {
+                          c.classList.toggle('filled', c.value !== '');
+                        });
+                      }
+
+                      function getCode() {
+                        return cells.map(c => c.value).join('');
+                      }
+
+                      function sendCode() {
+                        const code = getCode();
+                        // Send to Streamlit via postMessage
+                        window.parent.postMessage({ type: 'otp_code', code: code }, '*');
+                      }
+
+                      cells.forEach((cell, idx) => {
+                        // Focus first cell on load
+                        if (idx === 0) setTimeout(() => cell.focus(), 100);
+
+                        cell.addEventListener('keydown', (e) => {
+                          if (e.key === 'Backspace') {
+                            if (cell.value === '' && idx > 0) {
+                              cells[idx - 1].value = '';
+                              cells[idx - 1].focus();
+                              updateFilled();
+                            } else {
+                              cell.value = '';
+                              updateFilled();
+                            }
+                            e.preventDefault();
+                            sendCode();
+                          } else if (e.key === 'ArrowLeft' && idx > 0) {
+                            cells[idx - 1].focus();
+                          } else if (e.key === 'ArrowRight' && idx < 5) {
+                            cells[idx + 1].focus();
+                          }
+                        });
+
+                        cell.addEventListener('input', (e) => {
+                          // Only allow digits
+                          cell.value = cell.value.replace(/[^0-9]/g, '').slice(-1);
+                          updateFilled();
+                          sendCode();
+                          if (cell.value && idx < 5) {
+                            cells[idx + 1].focus();
+                          }
+                        });
+
+                        cell.addEventListener('paste', (e) => {
+                          e.preventDefault();
+                          const pasted = (e.clipboardData || window.clipboardData)
+                            .getData('text').replace(/[^0-9]/g, '').slice(0, 6);
+                          pasted.split('').forEach((ch, i) => {
+                            if (cells[idx + i]) cells[idx + i].value = ch;
+                          });
+                          updateFilled();
+                          sendCode();
+                          const nextIdx = Math.min(idx + pasted.length, 5);
+                          cells[nextIdx].focus();
+                        });
+
+                        // Prevent non-numeric keys
+                        cell.addEventListener('keypress', (e) => {
+                          if (!/[0-9]/.test(e.key)) e.preventDefault();
+                        });
+                      });
+                    </script>
+                    """
+
+                    components.html(otp_html, height=90)
+
+                    # Read back the OTP from session state (set via query param workaround)
+                    # Since postMessage can't directly set Streamlit state, we use a hidden
+                    # text input as the bridge — but it's styled invisible and auto-filled by JS
+                    st.markdown("""
+                    <script>
+                    window.addEventListener('message', function(e) {
+                      if (e.data && e.data.type === 'otp_code') {
+                        const inputs = window.parent.document.querySelectorAll('input[data-testid="stTextInput"]');
+                        inputs.forEach(inp => {
+                          if (inp.getAttribute('aria-label') === 'otp_bridge') {
+                            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                              window.HTMLInputElement.prototype, 'value').set;
+                            nativeInputValueSetter.call(inp, e.data.code);
+                            inp.dispatchEvent(new Event('input', { bubbles: true }));
+                          }
+                        });
+                      }
+                    });
+                    </script>
+                    """, unsafe_allow_html=True)
+
+                    bridge = st.text_input(
+                        "otp_bridge",
                         key="otp_input",
                         label_visibility="collapsed",
+                        max_chars=6,
                     )
+                    # Hide the bridge input visually
+                    st.markdown("""
+                    <style>
+                    div[data-testid="stTextInput"]:has(input[aria-label="otp_bridge"]) {
+                        height: 0; overflow: hidden; margin: 0; padding: 0;
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
 
-                    # Filter to only digits
-                    code_clean = "".join([c for c in raw_code if c.isdigit()])[:6]
-
-                    # Display as visual tiles
-                    tiles_html = "<div style='display:flex;gap:10px;justify-content:center;margin:12px 0;'>"
-                    for i in range(6):
-                        char = code_clean[i] if i < len(code_clean) else ""
-                        filled = char != ""
-                        bg = "#3d5a80" if filled else "#e0fbfc"
-                        color = "#ffffff" if filled else "#98c1d9"
-                        border = "#3d5a80" if filled else "#98c1d9"
-                        display_char = char if filled else "•"
-                        tiles_html += (
-                            f"<div style='width:48px;height:56px;border:2px solid {border};"
-                            f"border-radius:12px;background:{bg};display:flex;"
-                            f"align-items:center;justify-content:center;"
-                            f"font-size:1.6rem;font-weight:700;color:{color};'>{display_char}</div>"
-                        )
-                    tiles_html += "</div>"
-                    st.markdown(tiles_html, unsafe_allow_html=True)
-
-                    code_input = code_clean
+                    code_input = "".join([c for c in (bridge or "") if c.isdigit()])[:6]
 
                     verify_btn = st.button("Verify & Create Account", use_container_width=True, type="primary")
                     c1, c2 = st.columns(2)
