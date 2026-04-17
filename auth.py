@@ -92,7 +92,7 @@ def verify_token() -> bool:
 
 def login_screen():
     """
-    Login screen UI — identical to what you had, now backed by Flask API calls.
+    Compact card-based login screen with blue/white theme and Helvetica branding.
     """
     if not _check_flask_running():
         st.error(
@@ -101,44 +101,204 @@ def login_screen():
         )
         st.stop()
 
+    # ── Theme & global styles ─────────────────────────────────────────────────
+    # Palette: #1d4ed8 (primary blue), #3b82f6 (mid blue), #93c5fd (light blue),
+    #          #ffffff (white), #f0f6ff (off-white bg)
     st.markdown("""
-        <div style="text-align:center; padding: 3rem 0 1rem;">
-            <h1 style="font-size:2.2rem; font-weight:700; margin-bottom:0.25rem;">
-                IT Jobs PH
-            </h1>
-            <p style="color:#6b7280; font-size:1rem;">
-                Explore 525 IT job listings across the Philippines
-            </p>
-        </div>
+    <style>
+    /* Full-page background */
+    [data-testid="stAppViewContainer"] {
+        background: linear-gradient(135deg, #f0f6ff 0%, #e8f0fe 100%);
+    }
+    [data-testid="stHeader"] { background: transparent; }
+
+    /* Hide default block padding on login page */
+    .login-wrap .block-container { padding-top: 0 !important; }
+
+    /* Card */
+    .login-card {
+        background: #ffffff;
+        border: 1px solid #bfdbfe;
+        border-radius: 14px;
+        padding: 2rem 2rem 1.5rem;
+        box-shadow: 0 4px 24px rgba(29,78,216,0.08);
+        max-width: 420px;
+        margin: 0 auto;
+    }
+
+    /* Title */
+    .login-title {
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 1.9rem;
+        font-weight: 800;
+        color: #1d4ed8;
+        letter-spacing: -0.5px;
+        margin-bottom: 0;
+        text-align: center;
+    }
+    .login-subtitle {
+        color: #6b7280;
+        font-size: 0.82rem;
+        text-align: center;
+        margin-top: 2px;
+        margin-bottom: 1.2rem;
+    }
+
+    /* Divider text */
+    .or-divider {
+        display: flex; align-items: center; gap: 8px;
+        color: #9ca3af; font-size: 0.78rem; margin: 0.75rem 0;
+    }
+    .or-divider::before, .or-divider::after {
+        content: ""; flex: 1; height: 1px; background: #e5e7eb;
+    }
+
+    /* Guest button override */
+    div[data-testid="stButton"] button[kind="secondary"] {
+        border: 1.5px solid #3b82f6 !important;
+        color: #1d4ed8 !important;
+        background: #f0f6ff !important;
+        border-radius: 8px !important;
+        font-size: 0.85rem !important;
+    }
+    div[data-testid="stButton"] button[kind="secondary"]:hover {
+        background: #dbeafe !important;
+    }
+
+    /* Primary button */
+    div[data-testid="stButton"] button[kind="primary"],
+    div[data-testid="stFormSubmitButton"] button {
+        background: #1d4ed8 !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-size: 0.88rem !important;
+        font-weight: 600 !important;
+    }
+    div[data-testid="stButton"] button[kind="primary"]:hover,
+    div[data-testid="stFormSubmitButton"] button:hover {
+        background: #1e40af !important;
+    }
+
+    /* Input fields */
+    div[data-testid="stTextInput"] input {
+        border-radius: 8px !important;
+        border: 1.5px solid #bfdbfe !important;
+        font-size: 0.88rem !important;
+        padding: 0.45rem 0.75rem !important;
+    }
+    div[data-testid="stTextInput"] input:focus {
+        border-color: #3b82f6 !important;
+        box-shadow: 0 0 0 3px rgba(59,130,246,0.15) !important;
+    }
+
+    /* OTP tiles */
+    .otp-tile input {
+        text-align: center !important;
+        font-size: 1.3rem !important;
+        font-weight: 700 !important;
+        color: #1d4ed8 !important;
+        border: 2px solid #93c5fd !important;
+        border-radius: 10px !important;
+        padding: 0.5rem 0 !important;
+        background: #f0f6ff !important;
+    }
+    .otp-tile input:focus {
+        border-color: #1d4ed8 !important;
+        box-shadow: 0 0 0 3px rgba(29,78,216,0.15) !important;
+        background: #ffffff !important;
+    }
+
+    /* OTP tiles */
+    .otp-tile input {
+        text-align: center !important;
+        font-size: 1.3rem !important;
+        font-weight: 700 !important;
+        color: #1d4ed8 !important;
+        border: 2px solid #93c5fd !important;
+        border-radius: 10px !important;
+        padding: 0.5rem 0 !important;
+        background: #f0f6ff !important;
+        width: 100% !important;
+        height: 50px !important;
+    }
+    .otp-tile input:focus {
+        border-color: #1d4ed8 !important;
+        box-shadow: 0 0 0 3px rgba(29,78,216,0.15) !important;
+        background: #ffffff !important;
+    }
+
+    /* OTP tiles */
+    .otp-tile input {
+        text-align: center !important;
+        font-size: 1.3rem !important;
+        font-weight: 700 !important;
+        color: #1d4ed8 !important;
+        border: 2px solid #93c5fd !important;
+        border-radius: 10px !important;
+        padding: 0.5rem 0 !important;
+        background: #f0f6ff !important;
+        width: 100% !important;
+        height: 50px !important;
+    }
+    .otp-tile input:focus {
+        border-color: #1d4ed8 !important;
+        box-shadow: 0 0 0 3px rgba(29,78,216,0.15) !important;
+        background: #ffffff !important;
+    }
+
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] { gap: 0; border-bottom: 2px solid #bfdbfe; }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 0.88rem !important;
+        font-weight: 600 !important;
+        color: #6b7280 !important;
+        padding: 0.5rem 1.2rem !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #1d4ed8 !important;
+        border-bottom: 2px solid #1d4ed8 !important;
+    }
+
+    /* Labels */
+    div[data-testid="stTextInput"] label {
+        font-size: 0.8rem !important;
+        font-weight: 600 !important;
+        color: #374151 !important;
+    }
+    </style>
     """, unsafe_allow_html=True)
 
-    col_l, col_center, col_r = st.columns([1, 2, 1])
+    # ── Layout ────────────────────────────────────────────────────────────────
+    st.markdown("<div style='height:3.5rem'></div>", unsafe_allow_html=True)
+    col_l, col_center, col_r = st.columns([1, 1.6, 1])
 
     with col_center:
+        # Title
+        st.markdown("""
+            <div class="login-title">GitHiredPH</div>
+            <div class="login-subtitle">525 IT job listings across the Philippines</div>
+        """, unsafe_allow_html=True)
 
         # ── Guest access ──────────────────────────────────────────────────────
-        with st.container(border=True):
-            st.markdown("#### Continue as guest")
-            st.caption("Full access to dashboard, matcher, and AI chatbot — no login required.")
-            if st.button("Enter as guest", use_container_width=True):
-                st.session_state.role = "guest"
-                st.session_state.username = "Guest"
-                st.rerun()
+        if st.button("Continue as Guest", use_container_width=True):
+            st.session_state.role = "guest"
+            st.session_state.username = "Guest"
+            st.rerun()
 
-        st.write("")
+        st.markdown('<div class="or-divider">or sign in to your account</div>', unsafe_allow_html=True)
 
-        # ── Login / Register tabs ─────────────────────────────────────────────
+        # ── Login / Register card ─────────────────────────────────────────────
         with st.container(border=True):
-            tab_login, tab_register = st.tabs(["Log in", "Create an account"])
+            tab_login, tab_register = st.tabs(["Log in", "Create account"])
 
             # ── LOGIN TAB ─────────────────────────────────────────────────────
             with tab_login:
-                st.markdown("#### Account login")
                 with st.form("login_form", clear_on_submit=False):
                     username = st.text_input("Username or Email", placeholder="admin")
                     password = st.text_input("Password", type="password", placeholder="••••••••")
-                    
-                    submitted = st.form_submit_button("Log in", use_container_width=True)
+                    submitted = st.form_submit_button("Log in", use_container_width=True, type="primary")
 
                 if st.session_state.login_error:
                     st.error(st.session_state.login_error)
@@ -152,69 +312,79 @@ def login_screen():
                                 "POST", "/auth/login",
                                 json={"username": username, "password": password}
                             )
-
                             if code == 200:
-                                # Store the JWT token — this is what future requests use
                                 st.session_state.jwt_token = data["token"]
                                 st.session_state.role = data["role"]
                                 st.session_state.username = data["username"]
                                 st.session_state.login_error = ""
-                                if data.get("role") == "admin":
-                                    st.success("Logged in successfully as admin. Redirecting...")
-                                else:
-                                    st.success("Logged in successfully. Redirecting...")
-                                import time; time.sleep(0.5)
+                                import time; time.sleep(0.4)
                                 verify_token()
                                 st.rerun()
                             else:
-                                st.session_state.login_error = data.get("error", "Login failed. Please check your credentials.")
-                                import time; time.sleep(0.5)
+                                st.session_state.login_error = data.get("error", "Login failed.")
+                                import time; time.sleep(0.4)
                                 st.rerun()
 
             # ── REGISTER TAB ──────────────────────────────────────────────────
             with tab_register:
-                st.markdown("#### Register")
                 pending_signup = st.session_state.get("pending_signup")
 
                 if pending_signup:
+                    # ── OTP verification ──────────────────────────────────────
                     email_value = pending_signup.get("email", "")
                     email_parts = email_value.split("@")
                     masked_email = email_value
                     if len(email_parts) == 2 and len(email_parts[0]) > 2:
                         local = email_parts[0]
-                        masked_email = f"{local[:2]}{'*' * max(2, len(local) - 2)}@{email_parts[1]}"
+                        masked_email = f"{local[:2]}{'*' * max(2, len(local)-2)}@{email_parts[1]}"
 
-                    st.markdown("##### Verify your email address")
-                    st.caption(f"A verification code has been sent to {masked_email}")
-                    st.caption("Enter the 6-digit code below to continue.")
+                    st.markdown(f"**Check your inbox**")
+                    st.caption(f"We sent a 6-digit code to **{masked_email}**.")
 
-                    digit_cols = st.columns(6)
-                    digits = []
-                    for i, col in enumerate(digit_cols):
-                        with col:
-                            val = st.text_input(
-                                f"Digit {i+1}",
-                                max_chars=1,
-                                key=f"verify_digit_{i}",
-                                label_visibility="collapsed",
-                                placeholder="0",
-                            )
-                            digits.append(val.strip())
+                    # Single hidden text input (accepts paste)
+                    raw_code = st.text_input(
+                        "Verification code",
+                        max_chars=6,
+                        placeholder="Enter or paste 6-digit code",
+                        key="otp_input",
+                        label_visibility="collapsed",
+                    )
 
-                    code_input = "".join(digits)
+                    # Filter to only digits
+                    code_clean = "".join([c for c in raw_code if c.isdigit()])[:6]
 
-                    verify_btn = st.button("Verify", use_container_width=True, type="primary")
-                    action_col1, action_col2 = st.columns(2)
-                    with action_col1:
+                    # Display as visual tiles
+                    tiles_html = "<div style='display:flex;gap:10px;justify-content:center;margin:12px 0;'>"
+                    for i in range(6):
+                        char = code_clean[i] if i < len(code_clean) else ""
+                        filled = char != ""
+                        bg = "#3d5a80" if filled else "#e0fbfc"
+                        color = "#ffffff" if filled else "#98c1d9"
+                        border = "#3d5a80" if filled else "#98c1d9"
+                        display_char = char if filled else "•"
+                        tiles_html += (
+                            f"<div style='width:48px;height:56px;border:2px solid {border};"
+                            f"border-radius:12px;background:{bg};display:flex;"
+                            f"align-items:center;justify-content:center;"
+                            f"font-size:1.6rem;font-weight:700;color:{color};'>{display_char}</div>"
+                        )
+                    tiles_html += "</div>"
+                    st.markdown(tiles_html, unsafe_allow_html=True)
+
+                    code_input = code_clean
+
+                    verify_btn = st.button("Verify & Create Account", use_container_width=True, type="primary")
+                    c1, c2 = st.columns(2)
+                    with c1:
                         resend_btn = st.button("Resend code", use_container_width=True)
-                    with action_col2:
+                    with c2:
                         change_email_btn = st.button("Change email", use_container_width=True)
 
                     if verify_btn:
-                        if len(code_input) != 6 or not code_input.isdigit():
-                            st.error("Please enter the full 6-digit verification code.")
+                        if len(code_input) != 6:
+                            st.error("Enter the full 6-digit code.")
                         else:
-                            with st.spinner("Verifying code..."):
+                            with st.spinner("Verifying..."):
                                 data, verify_code = _api_call(
                                     "POST", "/auth/verify-code",
                                     json={"email": pending_signup["email"], "code": code_input}
@@ -223,71 +393,70 @@ def login_screen():
                                     reg_data, reg_code = _api_call(
                                         "POST", "/auth/register",
                                         json={
-                                            "email": pending_signup["email"],
+                                            "email":    pending_signup["email"],
                                             "username": pending_signup["username"],
                                             "password": pending_signup["password"],
                                         }
                                     )
                                     if reg_code == 201:
                                         st.session_state.jwt_token = reg_data.get("token")
-                                        st.session_state.role = reg_data.get("role")
-                                        st.session_state.username = reg_data.get("username")
+                                        st.session_state.role      = reg_data.get("role")
+                                        st.session_state.username  = reg_data.get("username")
                                         st.session_state.pending_signup = None
-                                        for i in range(6):
-                                            st.session_state.pop(f"verify_digit_{i}", None)
-                                        st.success("Account created successfully! Logging in...")
-                                        import time; time.sleep(0.5)
+                                        st.session_state.pop("otp_input", None)
+                                        st.success("Account created! Logging in...")
+                                        import time; time.sleep(0.4)
                                         verify_token()
                                         st.rerun()
                                     else:
-                                        st.error(reg_data.get("error", "Registration failed after code verification."))
+                                        st.error(reg_data.get("error", "Registration failed."))
                                 else:
-                                    st.error(data.get("error", "Invalid or expired verification code."))
+                                    st.error(data.get("error", "Invalid or expired code."))
 
                     if resend_btn:
-                        with st.spinner("Resending verification code..."):
+                        with st.spinner("Resending..."):
                             data, resend_code = _api_call(
                                 "POST", "/auth/send-verification-code",
                                 json={"email": pending_signup["email"]}
                             )
                             if resend_code == 200:
-                                st.success("A new verification code has been sent.")
+                                st.success("New code sent.")
                             else:
-                                st.error(data.get("error", "Failed to resend code."))
+                                st.error(data.get("error", "Failed to resend."))
 
                     if change_email_btn:
                         st.session_state.pending_signup = None
-                        for i in range(6):
-                            st.session_state.pop(f"verify_digit_{i}", None)
+                        st.session_state.pop("otp_input", None)
                         st.rerun()
 
                 else:
+                    # ── Registration form ─────────────────────────────────────
                     with st.form("register_form", clear_on_submit=True):
-                        new_email = st.text_input("Email Address", placeholder="user@example.com")
+                        new_email    = st.text_input("Email", placeholder="you@example.com")
                         new_username = st.text_input("Username", placeholder="MyUsername")
-                        new_password = st.text_input("Password", type="password", placeholder="••••••••")
-                        confirm_password = st.text_input("Confirm password", type="password", placeholder="••••••••")
+                        new_password = st.text_input("Password", type="password", placeholder="Min 8 chars, 1 number")
+                        confirm_pw   = st.text_input("Confirm password", type="password", placeholder="••••••••")
                         reg_submitted = st.form_submit_button("Continue", use_container_width=True, type="primary")
 
                     if reg_submitted:
-                        new_email_clean = new_email.strip().lower()
+                        new_email_clean    = new_email.strip().lower()
                         new_username_clean = new_username.strip()
 
                         if not new_email_clean or not new_username_clean or not new_password:
                             st.error("Please fill out all fields.")
                         elif not re.match(r"[^@]+@[^@]+\.[^@]+", new_email_clean):
-                            st.warning("Please enter a valid email address.")
+                            st.warning("Enter a valid email address.")
                         elif len(new_username_clean) < 3:
-                            st.warning("Username must be at least 3 characters long.")
+                            st.warning("Username must be at least 3 characters.")
                         elif not new_username_clean.isalnum():
                             st.warning("Username can only contain letters and numbers.")
                         elif len(new_password) < 8:
-                            st.warning("Password must be at least 8 characters long.")
+                            st.warning("Password must be at least 8 characters.")
                         elif not re.search(r"\d", new_password):
                             st.warning("Password must contain at least one number.")
                         elif not re.search(r"[a-zA-Z]", new_password):
                             st.warning("Password must contain at least one letter.")
-                        elif new_password != confirm_password:
+                        elif new_password != confirm_pw:
                             st.error("Passwords do not match.")
                         else:
                             with st.spinner("Sending verification code..."):
@@ -297,13 +466,13 @@ def login_screen():
                                 )
                                 if code == 200:
                                     st.session_state.pending_signup = {
-                                        "email": new_email_clean,
+                                        "email":    new_email_clean,
                                         "username": new_username_clean,
                                         "password": new_password,
                                     }
                                     st.rerun()
                                 else:
-                                    st.error(data.get("error", "Failed to send verification code."))
+                                    st.error(data.get("error", "Failed to send code."))
 
     return False
 

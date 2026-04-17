@@ -10,10 +10,45 @@ from scipy.spatial.distance import pdist
 
 
 # ── Cluster labels (human-readable names derived from top TF-IDF terms) ───────
-# We assign names after fitting so the dashboard can display them meaningfully.
-_CLUSTER_NAMES = {}   # populated by build_clusters()
-_KMEANS_MODEL  = None # cached so match_jobs can reuse it
-_TFIDF_MODEL   = None # shared vectoriser for consistency
+_CLUSTER_NAMES = {}
+_KMEANS_MODEL  = None
+_TFIDF_MODEL   = None
+
+# ── Privacy threshold (Differential Privacy / Minimum Sample Size) ────────────
+# Any group with fewer than this many records will have salary data suppressed
+# to prevent re-identification of individuals.
+# Aligns with GDPR Article 5 and the Philippine Data Privacy Act of 2012.
+PRIVACY_THRESHOLD = 5
+
+
+def apply_privacy_threshold(df: pd.DataFrame, group_col: str, salary_col: str = "salary_mid") -> pd.DataFrame:
+    """
+    Suppress salary data for groups below the minimum sample threshold.
+
+    For each unique value in group_col, if the group has fewer than
+    PRIVACY_THRESHOLD records, the salary_col values are replaced with NaN
+    and a 'privacy_suppressed' flag is set to True.
+
+    This prevents re-identification attacks where a small group (e.g. 1–2 jobs
+    in a niche cluster) could expose an individual's salary.
+
+    Parameters
+    ----------
+    df         : DataFrame to process (copy is made internally)
+    group_col  : column to group by (e.g. "level", "kmeans_label")
+    salary_col : salary column to suppress
+
+    Returns
+    -------
+    DataFrame with suppressed rows flagged and salary set to NaN.
+    """
+    df = df.copy()
+    df["privacy_suppressed"] = False
+    group_sizes = df.groupby(group_col)[salary_col].transform("count")
+    mask = group_sizes < PRIVACY_THRESHOLD
+    df.loc[mask, salary_col] = np.nan
+    df.loc[mask, "privacy_suppressed"] = True
+    return df
 
 
 def load_data(path: str) -> pd.DataFrame:
