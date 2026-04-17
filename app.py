@@ -6,6 +6,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import PyPDF2
+import docx
 from matcher import load_data, match_jobs, build_clusters, apply_privacy_threshold, PRIVACY_THRESHOLD
 from auth import require_auth, logout
 from chatbot import render_chat
