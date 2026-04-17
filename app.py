@@ -6,6 +6,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import io
+import PyPDF2
+import docx
 from matcher import load_data, match_jobs
 from auth import require_auth, logout
 from chatbot import render_chat
@@ -70,6 +73,29 @@ def get_data():
     return load_data("itjob_header_cleaned.csv")
 
 df = get_data()
+
+def extract_cv_text(uploaded_file) -> str:
+    if not uploaded_file:
+        return ""
+    
+    text = ""
+    file_type = uploaded_file.name.split(".")[-1].lower()
+    
+    try:
+        if file_type == "pdf":
+            reader = PyPDF2.PdfReader(uploaded_file)
+            for page in reader.pages:
+                text += page.extract_text() + " "
+        elif file_type == "docx":
+            doc = docx.Document(uploaded_file)
+            for para in doc.paragraphs:
+                text += para.text + " "
+        elif file_type == "txt":
+            text = uploaded_file.getvalue().decode("utf-8")
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
+        
+    return text.strip()
 
 # ── Header ────────────────────────────────────────────────────────────────────
 col_title, col_toggle, col_role, col_logout = st.columns([5, 1, 1, 1])
@@ -254,6 +280,10 @@ with tab_matcher:
     st.caption("Rank jobs based on your profile.")
 
     with st.form("matcher_form"):
+        st.markdown("**1. Upload your CV/Resume (Optional)**")
+        uploaded_cv = st.file_uploader("Upload PDF, DOCX or TXT", type=["pdf", "docx", "txt"])
+        st.markdown("**2. Or enter details manually**")
+        
         col1, col2 = st.columns(2)
         with col1:
             user_skills   = st.text_input("Skills / keywords", placeholder="e.g. Python, data analysis, SQL")
@@ -269,12 +299,20 @@ with tab_matcher:
         submitted = st.form_submit_button("Find Matches", use_container_width=True)
 
     if submitted:
+        # Extract CV text if a file is uploaded
+        cv_text = ""
+        if uploaded_cv is not None:
+            cv_text = extract_cv_text(uploaded_cv)
+            
+        # Combine user skills and CV text for the final query
+        combined_skills = f"{user_skills} {cv_text}".strip()
+        
         level_filter = [] if user_level == "Any" else [user_level]
         mode_filter  = [] if user_mode  == "Any" else [user_mode]
         type_filter  = [] if user_type  == "Any" else [user_type]
 
         with st.spinner("Running matching engine..."):
-            results = match_jobs(df=df, skill_query=user_skills, level=level_filter, mode=mode_filter,
+            results = match_jobs(df=df, skill_query=combined_skills, level=level_filter, mode=mode_filter,
                                  job_type=type_filter, exp_years=user_exp,
                                  salary_min=user_salary_min, salary_max=user_salary_max, top_n=top_n)
 

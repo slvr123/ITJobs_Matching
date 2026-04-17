@@ -14,3 +14,5 @@ gunicorn
 pyotp
 qrcode
 pypng
+PyPDF2
+python-docx
